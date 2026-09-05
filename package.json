@@ -1,0 +1,24 @@
+{
+  "name": "secure-p2p-chat",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "test:crypto": "cd src-tauri && cargo test --lib crypto",
+    "test:p2p": "cd src-tauri && cargo test --test p2p_http",
+    "check:lifecycle": "python3 .lifecycle/check.py .lifecycle/changes/bootstrap-p2p-chat/change.json"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-opener": "^2"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "vite": "^8.0.16",
+    "typescript": "~6.0.3"
+  }
+}

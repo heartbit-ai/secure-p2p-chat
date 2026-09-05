@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Secure P2P Chat</title>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+  <body>
+    <div class="atmosphere" aria-hidden="true"></div>
+    <main class="shell">
+      <header class="brand-block">
+        <p class="brand">Secure P2P Chat</p>
+        <p class="tagline">Conversation chiffrée point à point, directement en HTTP entre deux pairs.</p>
+      </header>
+
+      <section class="setup" aria-label="Connexion">
+        <div class="field">
+          <label for="port">Port local</label>
+          <div class="inline">
+            <input id="port" type="number" min="1024" max="65535" value="7420" />
+            <button id="start-btn" type="button">Écouter</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="peer-url">URL du pair</label>
+          <div class="inline">
+            <input id="peer-url" type="url" placeholder="http://192.168.1.12:7421" />
+            <button id="connect-btn" type="button">Connecter</button>
+          </div>
+        </div>
+        <dl class="meta" id="meta">
+          <div>
+            <dt>Adresse locale</dt>
+            <dd id="local-url">—</dd>
+          </div>
+          <div>
+            <dt>Clé publique</dt>
+            <dd id="local-key" class="mono">—</dd>
+          </div>
+          <div>
+            <dt>Session</dt>
+            <dd id="session-state">inactive</dd>
+          </div>
+        </dl>
+        <p class="status" id="status" role="status"></p>
+      </section>
+
+      <section class="chat" aria-label="Messages">
+        <div id="messages" class="messages" aria-live="polite"></div>
+        <form id="compose" class="compose">
+          <input id="message-input" type="text" maxlength="8192" placeholder="Écrire un message chiffré…" autocomplete="off" disabled />
+          <button type="submit" id="send-btn" disabled>Envoyer</button>
+        </form>
+      </section>
+    </main>
+  </body>
+</html>

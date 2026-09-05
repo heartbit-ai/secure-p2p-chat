@@ -1,0 +1,326 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Syne:wght@600;700;800&display=swap");
+
+:root {
+  --ink: #07131a;
+  --ink-2: #0c1f29;
+  --foam: #d7f3ea;
+  --mist: #9bb9b0;
+  --line: rgba(215, 243, 234, 0.14);
+  --accent: #b6f24d;
+  --accent-ink: #10210a;
+  --danger: #ff7a6e;
+  --out: #b6f24d;
+  --in: #7ed0ff;
+  --radius: 2px;
+  --font-brand: "Syne", sans-serif;
+  --font-body: "Manrope", sans-serif;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--foam);
+  background: var(--ink);
+  overflow-x: hidden;
+}
+
+.atmosphere {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(1200px 700px at 12% -10%, rgba(182, 242, 77, 0.18), transparent 55%),
+    radial-gradient(900px 600px at 100% 10%, rgba(126, 208, 255, 0.14), transparent 50%),
+    linear-gradient(160deg, #061018 0%, #0b2430 48%, #0a1a16 100%);
+  animation: drift 18s ease-in-out infinite alternate;
+}
+
+.atmosphere::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(rgba(215, 243, 234, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(215, 243, 234, 0.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(circle at 50% 20%, black, transparent 75%);
+  pointer-events: none;
+}
+
+@keyframes drift {
+  from {
+    filter: hue-rotate(0deg) saturate(1);
+    transform: scale(1);
+  }
+  to {
+    filter: hue-rotate(12deg) saturate(1.08);
+    transform: scale(1.03);
+  }
+}
+
+.shell {
+  position: relative;
+  z-index: 1;
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem 2rem;
+  display: grid;
+  gap: 1.75rem;
+  min-height: 100vh;
+  animation: rise 0.7s ease-out both;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.brand-block {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.brand {
+  margin: 0;
+  font-family: var(--font-brand);
+  font-weight: 800;
+  font-size: clamp(2.4rem, 6vw, 3.6rem);
+  letter-spacing: -0.04em;
+  line-height: 0.95;
+  background: linear-gradient(120deg, var(--foam) 20%, var(--accent) 90%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.tagline {
+  margin: 0;
+  max-width: 36rem;
+  color: var(--mist);
+  font-size: 1.02rem;
+  line-height: 1.45;
+}
+
+.setup,
+.chat {
+  display: grid;
+  gap: 1rem;
+}
+
+.field {
+  display: grid;
+  gap: 0.4rem;
+}
+
+label {
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mist);
+}
+
+.inline {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.55rem;
+}
+
+input {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: rgba(7, 19, 26, 0.72);
+  color: var(--foam);
+  border-radius: var(--radius);
+  padding: 0.8rem 0.9rem;
+  font: inherit;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+input:focus {
+  border-color: rgba(182, 242, 77, 0.55);
+  box-shadow: 0 0 0 3px rgba(182, 242, 77, 0.12);
+}
+
+input:disabled {
+  opacity: 0.55;
+}
+
+button {
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: inherit;
+  font-weight: 600;
+  padding: 0.8rem 1.1rem;
+  cursor: pointer;
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.meta {
+  margin: 0;
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.meta > div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.meta dt {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mist);
+}
+
+.meta dd {
+  margin: 0;
+  word-break: break-all;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  color: #c5e7dc;
+}
+
+.status {
+  min-height: 1.25rem;
+  margin: 0;
+  color: var(--mist);
+  font-size: 0.92rem;
+}
+
+.status.error {
+  color: var(--danger);
+}
+
+.chat {
+  min-height: 320px;
+  grid-template-rows: 1fr auto;
+  border-top: 1px solid var(--line);
+  padding-top: 1rem;
+}
+
+.messages {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  min-height: 240px;
+  max-height: 42vh;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.bubble {
+  max-width: min(78%, 34rem);
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--line);
+  background: rgba(12, 31, 41, 0.7);
+  animation: pop 0.28s ease-out both;
+}
+
+.bubble.out {
+  align-self: flex-end;
+  border-color: rgba(182, 242, 77, 0.35);
+}
+
+.bubble.in {
+  align-self: flex-start;
+  border-color: rgba(126, 208, 255, 0.35);
+}
+
+.bubble .who {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 0.25rem;
+  color: var(--mist);
+}
+
+.bubble.out .who {
+  color: var(--out);
+}
+
+.bubble.in .who {
+  color: var(--in);
+}
+
+.bubble .body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.compose {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.55rem;
+}
+
+.empty {
+  color: var(--mist);
+  font-size: 0.95rem;
+  margin: auto 0;
+}
+
+@media (max-width: 640px) {
+  .shell {
+    padding: 1.5rem 1rem 1.25rem;
+    gap: 1.25rem;
+  }
+
+  .inline,
+  .compose {
+    grid-template-columns: 1fr;
+  }
+
+  .messages {
+    max-height: 36vh;
+  }
+}

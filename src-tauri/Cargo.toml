@@ -1,0 +1,44 @@
+[package]
+name = "secure-p2p-chat"
+version = "0.1.0"
+description = "Secure encrypted peer-to-peer point-to-point chat over HTTP"
+authors = ["heartbit-ai"]
+edition = "2021"
+
+[lib]
+name = "secure_p2p_chat_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
+axum = { version = "0.8", features = ["json"] }
+tower-http = { version = "0.6", features = ["cors"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+aes-gcm = "0.10"
+hkdf = "0.12"
+sha2 = "0.10"
+rand = "0.8"
+base64 = "0.22"
+thiserror = "2"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

@@ -1,0 +1,71 @@
+{
+  "id": "bootstrap-p2p-chat",
+  "state": "draft",
+  "objective": "Ship a greenfield Tauri + Rust desktop app for encrypted point-to-point peer chat over HTTP, with GraphPact installed as the project lifecycle.",
+  "non_goals": [
+    "No group/mesh chat or multi-peer rooms",
+    "No central relay, discovery service, or Tor integration",
+    "No mobile packaging in this change",
+    "No password-based key recovery or cloud key backup"
+  ],
+  "project": {
+    "field": "greenfield"
+  },
+  "grill": [
+    "User asked for HTTP point-to-point P2P: each peer exposes a local HTTP API and dials the other peer by URL; no WebRTC.",
+    "Assumed exactly one active remote peer per session (true point-to-point).",
+    "Assumed X25519 ECDH + HKDF-SHA256 + AES-256-GCM for session encryption with local-only private keys.",
+    "Pre-mortem: most plausible failure is accepting ciphertext from a third party after handshake — mitigate by binding the session to the peer public key established at handshake."
+  ],
+  "risk": {
+    "tier": "critical",
+    "signals": ["secrets", "auth-permissions", "input-validation", "concurrency-distributed"],
+    "rationale": "Cryptographic identity, encrypted messaging, HTTP input parsing, and concurrent peer I/O."
+  },
+  "acceptance": [
+    {
+      "id": "graphpact-installed",
+      "criterion": "GraphPact 0.2.0 files are present and the checker reports its version.",
+      "verification": "python3 .lifecycle/check.py --version"
+    },
+    {
+      "id": "crypto-roundtrip",
+      "criterion": "ECDH session keys encrypt and decrypt a message successfully; tampered ciphertext is rejected.",
+      "verification": "cd src-tauri && cargo test --lib crypto"
+    },
+    {
+      "id": "http-p2p-exchange",
+      "criterion": "Two in-process peers complete handshake and exchange one encrypted message over HTTP.",
+      "verification": "cd src-tauri && cargo test --test p2p_http"
+    },
+    {
+      "id": "tauri-backend-builds",
+      "criterion": "The Tauri Rust backend compiles with the chat commands linked.",
+      "verification": "cd src-tauri && cargo check"
+    }
+  ],
+  "execution": {
+    "mode": "sequential",
+    "rationale": "Greenfield walking skeleton: crypto, HTTP peer, Tauri commands, and UI share one integration path."
+  },
+  "tasks": [
+    {
+      "id": "install-graphpact",
+      "outcome": "Copy GraphPact skill, checker, and agent instructions into the repository."
+    },
+    {
+      "id": "crypto-http-core",
+      "outcome": "Implement identity, session crypto, and HTTP peer endpoints with tests.",
+      "depends_on": ["install-graphpact"]
+    },
+    {
+      "id": "tauri-ui",
+      "outcome": "Wire Tauri commands and a minimal chat UI to the peer core.",
+      "depends_on": ["crypto-http-core"]
+    }
+  ],
+  "approvals": {
+    "contract": false,
+    "critical_actions": false
+  }
+}
