@@ -25,6 +25,8 @@ pub enum CryptoError {
     Encrypt,
     #[error("decryption failed (tampered or wrong key)")]
     Decrypt,
+    #[error("handshake proof mismatch")]
+    HandshakeProof,
 }
 
 #[derive(Clone)]
@@ -114,6 +116,11 @@ pub struct EncryptedPayload {
     pub ciphertext_b64: String,
 }
 
+/// Canonical handshake transcript bound into proof-of-possession ciphertexts.
+pub fn handshake_transcript(initiator_pk_b64: &str, responder_pk_b64: &str) -> Vec<u8> {
+    format!("p2p-chat-handshake-v1|{initiator_pk_b64}|{responder_pk_b64}").into_bytes()
+}
+
 fn hkdf_key(shared: &[u8; 32], info: &[u8]) -> [u8; AES_KEY_LEN] {
     let hk = Hkdf::<Sha256>::new(Some(b"secure-p2p-chat-v1"), shared);
     let mut out = [0u8; AES_KEY_LEN];
@@ -152,9 +159,7 @@ mod tests {
         let alice_keys = SessionKeys::derive(&shared_a, true);
         let bob_keys = SessionKeys::derive(&shared_b, false);
 
-        let payload = alice_keys
-            .encrypt(b"hello peer")
-            .expect("encrypt");
+        let payload = alice_keys.encrypt(b"hello peer").expect("encrypt");
         let plain = bob_keys.decrypt(&payload).expect("decrypt");
         assert_eq!(plain, b"hello peer");
 
@@ -183,5 +188,39 @@ mod tests {
         let alice = Identity::generate();
         assert!(alice.shared_secret_with("not-base64!!!").is_err());
         assert!(alice.shared_secret_with(&B64.encode([1u8; 8])).is_err());
+    }
+
+    #[test]
+    fn mutual_handshake_proofs_roundtrip() {
+        let a = Identity::generate();
+        let b = Identity::generate();
+        let shared = a.shared_secret_with(&b.public_key_b64()).unwrap();
+        let t = handshake_transcript(&a.public_key_b64(), &b.public_key_b64());
+        let ik = SessionKeys::derive(&shared, true);
+        let rk = SessionKeys::derive(&shared, false);
+        let p1 = ik.encrypt(&t).unwrap();
+        assert_eq!(rk.decrypt(&p1).unwrap(), t);
+        let p2 = rk.encrypt(&t).unwrap();
+        assert_eq!(ik.decrypt(&p2).unwrap(), t);
+    }
+
+    #[test]
+    fn handshake_proof_requires_private_key() {
+        let alice = Identity::generate();
+        let bob = Identity::generate();
+        let mallory = Identity::generate();
+
+        let transcript = handshake_transcript(&alice.public_key_b64(), &bob.public_key_b64());
+        let shared_ab = alice.shared_secret_with(&bob.public_key_b64()).unwrap();
+        let alice_keys = SessionKeys::derive(&shared_ab, true);
+        let bob_keys = SessionKeys::derive(&shared_ab, false);
+        let proof = alice_keys.encrypt(&transcript).unwrap();
+        assert_eq!(bob_keys.decrypt(&proof).unwrap(), transcript);
+
+        // Mallory claiming Alice's public key cannot produce a decryptable proof.
+        let shared_fake = mallory.shared_secret_with(&bob.public_key_b64()).unwrap();
+        let fake_keys = SessionKeys::derive(&shared_fake, true);
+        let fake_proof = fake_keys.encrypt(&transcript).unwrap();
+        assert!(bob_keys.decrypt(&fake_proof).is_err());
     }
 }

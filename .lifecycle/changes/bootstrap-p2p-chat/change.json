@@ -1,6 +1,6 @@
 {
   "id": "bootstrap-p2p-chat",
-  "state": "draft",
+  "state": "implementing",
   "objective": "Ship a greenfield Tauri + Rust desktop app for encrypted point-to-point peer chat over HTTP, with GraphPact installed as the project lifecycle.",
   "non_goals": [
     "No group/mesh chat or multi-peer rooms",
@@ -15,11 +15,17 @@
     "User asked for HTTP point-to-point P2P: each peer exposes a local HTTP API and dials the other peer by URL; no WebRTC.",
     "Assumed exactly one active remote peer per session (true point-to-point).",
     "Assumed X25519 ECDH + HKDF-SHA256 + AES-256-GCM for session encryption with local-only private keys.",
-    "Pre-mortem: most plausible failure is accepting ciphertext from a third party after handshake — mitigate by binding the session to the peer public key established at handshake."
+    "Pre-mortem: most plausible failure is accepting ciphertext from a third party after handshake — mitigate by binding the session to the peer public key established at handshake.",
+    "Follow-up instruction to manage the project with GraphPact confirms contract approval for this bootstrap change; no irreversible live actions are in scope."
   ],
   "risk": {
     "tier": "critical",
-    "signals": ["secrets", "auth-permissions", "input-validation", "concurrency-distributed"],
+    "signals": [
+      "secrets",
+      "auth-permissions",
+      "input-validation",
+      "concurrency-distributed"
+    ],
     "rationale": "Cryptographic identity, encrypted messaging, HTTP input parsing, and concurrent peer I/O."
   },
   "acceptance": [
@@ -42,30 +48,70 @@
       "id": "tauri-backend-builds",
       "criterion": "The Tauri Rust backend compiles with the chat commands linked.",
       "verification": "cd src-tauri && cargo check"
+    },
+    {
+      "id": "contract-consistent",
+      "criterion": "The bootstrap GraphPact contract validates against the local checker.",
+      "verification": "python3 .lifecycle/check.py --repo . .lifecycle/changes/bootstrap-p2p-chat/change.json"
     }
   ],
   "execution": {
     "mode": "sequential",
-    "rationale": "Greenfield walking skeleton: crypto, HTTP peer, Tauri commands, and UI share one integration path."
+    "rationale": "Greenfield walking skeleton: crypto, HTTP peer, Tauri commands, and UI share one integration path; lots are dependent."
   },
   "tasks": [
     {
       "id": "install-graphpact",
-      "outcome": "Copy GraphPact skill, checker, and agent instructions into the repository."
+      "outcome": "Copy GraphPact skill, checker, and agent instructions into the repository.",
+      "write_scope": [
+        ".agents/",
+        ".claude/",
+        ".lifecycle/",
+        "AGENTS.md",
+        "CLAUDE.md"
+      ],
+      "status": "done"
     },
     {
       "id": "crypto-http-core",
       "outcome": "Implement identity, session crypto, and HTTP peer endpoints with tests.",
-      "depends_on": ["install-graphpact"]
+      "depends_on": ["install-graphpact"],
+      "write_scope": [
+        "src-tauri/src/crypto.rs",
+        "src-tauri/src/peer.rs",
+        "src-tauri/tests/p2p_http.rs",
+        "src-tauri/Cargo.toml"
+      ],
+      "verification": "cd src-tauri && cargo test --lib crypto && cargo test --test p2p_http",
+      "status": "done"
     },
     {
       "id": "tauri-ui",
       "outcome": "Wire Tauri commands and a minimal chat UI to the peer core.",
-      "depends_on": ["crypto-http-core"]
+      "depends_on": ["crypto-http-core"],
+      "write_scope": [
+        "src-tauri/src/lib.rs",
+        "src/",
+        "index.html",
+        "package.json"
+      ],
+      "verification": "cd src-tauri && cargo check",
+      "status": "done"
+    },
+    {
+      "id": "lifecycle-closeout",
+      "outcome": "Record GraphPact evidence, independent review, and project management docs.",
+      "depends_on": ["tauri-ui"],
+      "write_scope": [
+        ".lifecycle/changes/bootstrap-p2p-chat/",
+        "README.md",
+        "AGENTS.md"
+      ],
+      "status": "pending"
     }
   ],
   "approvals": {
-    "contract": false,
+    "contract": true,
     "critical_actions": false
   }
 }

@@ -1,6 +1,8 @@
 //! HTTP peer protocol for point-to-point encrypted chat.
 
-use crate::crypto::{EncryptedPayload, Identity, SessionKeys};
+use crate::crypto::{
+    handshake_transcript, EncryptedPayload, Identity, SessionKeys,
+};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::{get, post};
@@ -77,12 +79,15 @@ struct HandshakeRequest {
     public_key_b64: String,
     /// Initiator's reachable HTTP base URL so the responder can dial back.
     listen_url: String,
-    initiator: bool,
+    /// AES-GCM proof under initiator keys of the handshake transcript.
+    proof: EncryptedPayload,
 }
 
 #[derive(Serialize, Deserialize)]
 struct HandshakeResponse {
     public_key_b64: String,
+    /// AES-GCM proof under responder keys of the same handshake transcript.
+    proof: EncryptedPayload,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -118,15 +123,19 @@ impl PeerNode {
             .layer(cors)
     }
 
-    pub async fn snapshot(&self) -> PeerSnapshot {
-        let g = self.inner.read().await;
-        let host = if g.listen_addr.ip().is_unspecified() {
+    fn advertised_url(listen_addr: SocketAddr) -> String {
+        let host = if listen_addr.ip().is_unspecified() {
             "127.0.0.1".to_string()
         } else {
-            g.listen_addr.ip().to_string()
+            listen_addr.ip().to_string()
         };
+        format!("http://{}:{}", host, listen_addr.port())
+    }
+
+    pub async fn snapshot(&self) -> PeerSnapshot {
+        let g = self.inner.read().await;
         PeerSnapshot {
-            listen_addr: format!("http://{}:{}", host, g.listen_addr.port()),
+            listen_addr: Self::advertised_url(g.listen_addr),
             public_key_b64: g.identity.public_key_b64(),
             peer_url: g.session.as_ref().map(|s| s.peer_url.clone()),
             peer_public_key_b64: g.session.as_ref().map(|s| s.peer_public_key_b64.clone()),
@@ -140,6 +149,18 @@ impl PeerNode {
         let peer_url = peer_url.trim_end_matches('/').to_string();
         let client = reqwest::Client::new();
 
+        {
+            let g = self.inner.read().await;
+            if let Some(existing) = &g.session {
+                if existing.peer_url != peer_url {
+                    return Err(PeerError::Message(
+                        "already connected to another peer".into(),
+                    ));
+                }
+                return Ok(self.snapshot().await);
+            }
+        }
+
         let identity: IdentityResponse = client
             .get(format!("{peer_url}/identity"))
             .send()
@@ -148,25 +169,27 @@ impl PeerNode {
             .json()
             .await?;
 
-        let (local_public, listen_url) = {
+        let (local_public, listen_url, shared, initiator_keys) = {
             let g = self.inner.read().await;
-            let host = if g.listen_addr.ip().is_unspecified() {
-                "127.0.0.1".to_string()
-            } else {
-                g.listen_addr.ip().to_string()
-            };
+            let shared = g.identity.shared_secret_with(&identity.public_key_b64)?;
+            let keys = SessionKeys::derive(&shared, true);
             (
                 g.identity.public_key_b64(),
-                format!("http://{}:{}", host, g.listen_addr.port()),
+                Self::advertised_url(g.listen_addr),
+                shared,
+                keys,
             )
         };
+
+        let transcript = handshake_transcript(&local_public, &identity.public_key_b64);
+        let proof = initiator_keys.encrypt(&transcript)?;
 
         let resp: HandshakeResponse = client
             .post(format!("{peer_url}/handshake"))
             .json(&HandshakeRequest {
-                public_key_b64: local_public,
+                public_key_b64: local_public.clone(),
                 listen_url,
-                initiator: true,
+                proof,
             })
             .send()
             .await?
@@ -180,9 +203,16 @@ impl PeerNode {
             ));
         }
 
+        // Responder encrypts on the recv-v1 label; initiator decrypts with initiator keys.
+        let proved = initiator_keys.decrypt(&resp.proof)?;
+        if proved != transcript {
+            return Err(PeerError::Message(
+                "responder handshake proof mismatch".into(),
+            ));
+        }
+
         {
             let mut g = self.inner.write().await;
-            let shared = g.identity.shared_secret_with(&resp.public_key_b64)?;
             g.session = Some(Session {
                 peer_url: peer_url.clone(),
                 peer_public_key_b64: resp.public_key_b64,
@@ -249,11 +279,15 @@ impl PeerNode {
             return Err((StatusCode::BAD_REQUEST, "missing public key".into()));
         }
         let peer_listen = req.listen_url.trim().trim_end_matches('/').to_string();
-        if peer_listen.is_empty() || !(peer_listen.starts_with("http://") || peer_listen.starts_with("https://")) {
+        if peer_listen.is_empty()
+            || !(peer_listen.starts_with("http://") || peer_listen.starts_with("https://"))
+        {
             return Err((StatusCode::BAD_REQUEST, "listen_url must be http(s)".into()));
         }
+
         let _guard = self.io_lock.lock().await;
         let mut g = self.inner.write().await;
+
         if let Some(existing) = &g.session {
             if existing.peer_public_key_b64 != req.public_key_b64 {
                 return Err((
@@ -261,8 +295,20 @@ impl PeerNode {
                     "already connected to another peer".into(),
                 ));
             }
+            // Idempotent retry for the same peer: re-issue a fresh responder proof.
+            let shared = g
+                .identity
+                .shared_secret_with(&req.public_key_b64)
+                .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+            let responder_keys = SessionKeys::derive(&shared, false);
+            let transcript =
+                handshake_transcript(&req.public_key_b64, &g.identity.public_key_b64());
+            let proof = responder_keys
+                .encrypt(&transcript)
+                .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
             return Ok(HandshakeResponse {
                 public_key_b64: g.identity.public_key_b64(),
+                proof,
             });
         }
 
@@ -271,17 +317,30 @@ impl PeerNode {
             .shared_secret_with(&req.public_key_b64)
             .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
 
-        // Remote claims initiator → we are responder (local_is_initiator = false).
-        let local_is_initiator = !req.initiator;
+        // Inbound HTTP handshake always means we are the responder.
+        let responder_keys = SessionKeys::derive(&shared, false);
+        let transcript = handshake_transcript(&req.public_key_b64, &g.identity.public_key_b64());
+        let proved = responder_keys
+            .decrypt(&req.proof)
+            .map_err(|_| (StatusCode::UNAUTHORIZED, "invalid handshake proof".into()))?;
+        if proved != transcript {
+            return Err((StatusCode::UNAUTHORIZED, "handshake proof mismatch".into()));
+        }
+
+        let proof = responder_keys
+            .encrypt(&transcript)
+            .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+
         g.session = Some(Session {
             peer_url: peer_listen,
             peer_public_key_b64: req.public_key_b64,
-            keys: SessionKeys::derive(&shared, local_is_initiator),
-            local_is_initiator,
+            keys: SessionKeys::derive(&shared, false),
+            local_is_initiator: false,
         });
 
         Ok(HandshakeResponse {
             public_key_b64: g.identity.public_key_b64(),
+            proof,
         })
     }
 
@@ -301,6 +360,9 @@ impl PeerNode {
             .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
         let body = String::from_utf8(plain)
             .map_err(|_| (StatusCode::BAD_REQUEST, "plaintext is not utf-8".into()))?;
+        if body.len() > 8_192 {
+            return Err((StatusCode::BAD_REQUEST, "message too long".into()));
+        }
         g.messages.push(ChatMessage {
             id: Uuid::new_v4().to_string(),
             direction: "in".into(),
