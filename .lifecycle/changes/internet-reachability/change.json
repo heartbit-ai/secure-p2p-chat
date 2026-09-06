@@ -1,6 +1,6 @@
 {
   "id": "internet-reachability",
-  "state": "implementing",
+  "state": "done",
   "objective": "Make encrypted HTTP point-to-point chat work between two remote PCs on the internet when at least one peer publishes a reachable URL, including NAT-safe reverse delivery.",
   "non_goals": [
     "No full mesh or multi-peer rooms",
@@ -105,11 +105,59 @@
       "write_scope": [
         ".lifecycle/changes/internet-reachability/"
       ],
-      "status": "pending"
+      "status": "done"
     }
   ],
   "approvals": {
     "contract": true,
     "critical_actions": true
+  },
+  "evidence": [
+    {
+      "acceptance_id": "lan-continuity",
+      "command": "cd src-tauri && cargo test --test p2p_http two_peers_handshake_and_exchange_encrypted_message -- --exact",
+      "exit_code": 0,
+      "revision": "874eefb383e572de0fc8895b334318af2c69659a",
+      "observed_at": "2026-09-06T03:00:24Z"
+    },
+    {
+      "acceptance_id": "crypto-continuity",
+      "command": "cd src-tauri && cargo test --lib crypto",
+      "exit_code": 0,
+      "revision": "874eefb383e572de0fc8895b334318af2c69659a",
+      "observed_at": "2026-09-06T03:00:24Z"
+    },
+    {
+      "acceptance_id": "mailbox-nat-path",
+      "command": "cd src-tauri && cargo test --test p2p_http mailbox_delivers_when_dialback_unreachable -- --exact",
+      "exit_code": 0,
+      "revision": "874eefb383e572de0fc8895b334318af2c69659a",
+      "observed_at": "2026-09-06T03:00:24Z"
+    },
+    {
+      "acceptance_id": "advertise-host",
+      "command": "cd src-tauri && cargo test --test p2p_http advertise_host_used_in_listen_url -- --exact",
+      "exit_code": 0,
+      "revision": "874eefb383e572de0fc8895b334318af2c69659a",
+      "observed_at": "2026-09-06T03:00:24Z"
+    },
+    {
+      "acceptance_id": "backend-builds",
+      "command": "cd src-tauri && cargo check",
+      "exit_code": 0,
+      "revision": "874eefb383e572de0fc8895b334318af2c69659a",
+      "observed_at": "2026-09-06T03:00:24Z"
+    }
+  ],
+  "review": {
+    "independent": true,
+    "result": "passed",
+    "revision": "874eefb383e572de0fc8895b334318af2c69659a",
+    "findings": [
+      "Empty listen_url marks peer not dialable; reverse path uses authenticated /pull mailbox.",
+      "/pull requires session peer public key and AES-GCM proof over pull-v1.",
+      "Advertise host controls share URL; LAN direct /message path preserved.",
+      "Residual: still need one reachable peer on the open internet; first-contact TOFU over HTTP; STUN query reveals IP to Google STUN."
+    ]
   }
 }
