@@ -15,6 +15,8 @@ type PeerSnapshot = {
   candidate_urls: string[];
   peer_url: string | null;
   peer_public_key_b64: string | null;
+  safety_number: string | null;
+  trust_state: string;
   connected: boolean;
   peer_dialable: boolean;
   messages: ChatMessage[];
@@ -34,10 +36,13 @@ const els = {
   copyUrlBtn: document.querySelector<HTMLButtonElement>("#copy-url-btn")!,
   peerUrl: document.querySelector<HTMLInputElement>("#peer-url")!,
   connectBtn: document.querySelector<HTMLButtonElement>("#connect-btn")!,
+  verifyBtn: document.querySelector<HTMLButtonElement>("#verify-btn")!,
   shareUrl: document.querySelector<HTMLElement>("#share-url")!,
   candidates: document.querySelector<HTMLElement>("#candidates")!,
   localKey: document.querySelector<HTMLElement>("#local-key")!,
   sessionState: document.querySelector<HTMLElement>("#session-state")!,
+  safetyNumber: document.querySelector<HTMLElement>("#safety-number")!,
+  trustState: document.querySelector<HTMLElement>("#trust-state")!,
   status: document.querySelector<HTMLElement>("#status")!,
   messages: document.querySelector<HTMLElement>("#messages")!,
   compose: document.querySelector<HTMLFormElement>("#compose")!,
@@ -54,6 +59,12 @@ function setStatus(text: string, isError = false) {
   els.status.classList.toggle("error", isError);
 }
 
+function trustLabel(state: string): string {
+  if (state === "verified") return "vérifié (épinglé)";
+  if (state === "unverified") return "non vérifié — comparez le safety number";
+  return "aucune";
+}
+
 function renderSnapshot(snap: PeerSnapshot) {
   lastShareUrl = snap.share_url;
   els.shareUrl.textContent = snap.share_url;
@@ -64,9 +75,17 @@ function renderSnapshot(snap: PeerSnapshot) {
       ? "chiffrée · active (direct)"
       : "chiffrée · active (mailbox NAT)"
     : "inactive";
-  els.messageInput.disabled = !snap.connected;
-  els.sendBtn.disabled = !snap.connected;
+  els.safetyNumber.textContent = snap.safety_number || "—";
+  els.trustState.textContent = trustLabel(snap.trust_state);
+  els.trustState.classList.toggle("verified", snap.trust_state === "verified");
+  els.trustState.classList.toggle(
+    "unverified",
+    snap.trust_state === "unverified",
+  );
+  els.messageInput.disabled = !snap.connected || snap.trust_state !== "verified";
+  els.sendBtn.disabled = !snap.connected || snap.trust_state !== "verified";
   els.copyUrlBtn.disabled = !snap.share_url;
+  els.verifyBtn.disabled = !snap.connected || snap.trust_state === "verified";
 
   if (snap.messages.length === 0) {
     els.messages.innerHTML = `<p class="empty">Aucun message. Partagez votre URL, connectez un pair, puis écrivez.</p>`;
@@ -180,7 +199,19 @@ els.connectBtn.addEventListener("click", async () => {
   try {
     const snap = await invoke<PeerSnapshot>("connect_peer", { peerUrl });
     renderSnapshot(snap);
-    setStatus("Session chiffrée établie.");
+    setStatus(
+      "Session chiffrée établie. Comparez le safety number, puis vérifiez l’interlocuteur.",
+    );
+  } catch (err) {
+    setStatus(String(err), true);
+  }
+});
+
+els.verifyBtn.addEventListener("click", async () => {
+  try {
+    const snap = await invoke<PeerSnapshot>("verify_contact");
+    renderSnapshot(snap);
+    setStatus("Interlocuteur vérifié — clé publique épinglée.");
   } catch (err) {
     setStatus(String(err), true);
   }
@@ -194,7 +225,7 @@ els.compose.addEventListener("submit", async (event) => {
     const snap = await invoke<PeerSnapshot>("send_chat_message", { body });
     els.messageInput.value = "";
     renderSnapshot(snap);
-    setStatus("Message envoyé (chiffré).");
+    setStatus("Message envoyé (chiffré, Double Ratchet).");
   } catch (err) {
     setStatus(String(err), true);
   }
@@ -202,6 +233,6 @@ els.compose.addEventListener("submit", async (event) => {
 
 window.addEventListener("DOMContentLoaded", () => {
   setStatus(
-    "Astuce Internet: un PC ouvre le port / utilise Tailscale et partage son URL; l’autre se connecte.",
+    "Astuce Internet: un PC ouvre le port / utilise Tailscale et partage son URL; l’autre se connecte. Vérifiez toujours le safety number.",
   );
 });

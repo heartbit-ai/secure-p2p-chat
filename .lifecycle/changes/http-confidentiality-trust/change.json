@@ -1,0 +1,109 @@
+{
+  "id": "http-confidentiality-trust",
+  "state": "verifying",
+  "objective": "Rebuild peer messaging greenfield so HTTP transport carries Double-Ratchet confidentiality and interlocutor trust via safety numbers and verification pinning.",
+  "non_goals": [
+    "No TLS/HTTPS requirement (cleartext HTTP transport remains allowed)",
+    "No Tor/onion routing",
+    "No multi-device key sync or password recovery",
+    "No group chat or multi-peer mesh",
+    "No persistent encrypted disk store beyond in-process trusted-contact pins"
+  ],
+  "project": {
+    "field": "greenfield"
+  },
+  "grill": [
+    "User priority: confidentiality of exchanges and trust in the interlocutor; HTTP must keep working; greenfield so legacy ECDH SessionKeys may be deleted.",
+    "Assumed Noise-style authenticated handshake (static+ephemeral DH) seeds a Signal Double Ratchet; AES-256-GCM remains the AEAD.",
+    "Assumed safety numbers from sorted identity public keys plus an explicit verify/pin action; unverified sessions still encrypt but surface untrusted state.",
+    "Rejected mandatory HTTPS for this slice: confidentiality is end-to-end at the application layer; transport may stay http://.",
+    "Pre-mortem: most plausible failure is a TOFU MITM on first HTTP connect before out-of-band verify \u2014 mitigate by binding listen_url into the handshake transcript, showing safety numbers prominently, and refusing to treat unverified peers as trusted."
+  ],
+  "risk": {
+    "tier": "critical",
+    "signals": [
+      "secrets",
+      "auth-permissions",
+      "input-validation",
+      "concurrency-distributed"
+    ],
+    "rationale": "New session crypto, interlocutor authentication/trust pinning, HTTP input parsing, and concurrent send/poll ratchets."
+  },
+  "acceptance": [
+    {
+      "id": "ratchet-confidentiality",
+      "criterion": "Two peers encrypt/decrypt through a Double Ratchet with forward-moving chain keys; tampered ciphertext is rejected.",
+      "verification": "cd src-tauri && cargo test --lib crypto"
+    },
+    {
+      "id": "safety-and-trust",
+      "criterion": "Safety numbers are deterministic for a key pair; verify pins the peer; a different identity key is not treated as verified.",
+      "verification": "cd src-tauri && cargo test --lib crypto trust_ -- --nocapture"
+    },
+    {
+      "id": "http-e2e",
+      "criterion": "Two HTTP peers complete authenticated handshake, exchange ratchet messages, and mailbox pull still works for NAT.",
+      "verification": "cd src-tauri && cargo test --test p2p_http"
+    },
+    {
+      "id": "backend-builds",
+      "criterion": "Tauri backend compiles with trust commands linked.",
+      "verification": "cd src-tauri && cargo check"
+    }
+  ],
+  "execution": {
+    "mode": "sequential",
+    "rationale": "Crypto, peer wire format, and UI trust surface share one integration path."
+  },
+  "tasks": [
+    {
+      "id": "crypto-ratchet-trust",
+      "outcome": "Replace session crypto with authenticated handshake, Double Ratchet, safety numbers, and trust pins.",
+      "write_scope": [
+        "src-tauri/src/crypto.rs",
+        "src-tauri/Cargo.toml"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "peer-http-wire",
+      "outcome": "Wire HTTP peer protocol to the new handshake/ratchet payloads and trust APIs.",
+      "depends_on": [
+        "crypto-ratchet-trust"
+      ],
+      "write_scope": [
+        "src-tauri/src/peer.rs",
+        "src-tauri/src/lib.rs",
+        "src-tauri/tests/p2p_http.rs"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "ui-verify",
+      "outcome": "Show safety number and verified/untrusted state; add verify contact action.",
+      "depends_on": [
+        "peer-http-wire"
+      ],
+      "write_scope": [
+        "src/",
+        "index.html"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "lifecycle-closeout",
+      "outcome": "Evidence, independent review, and GraphPact done state.",
+      "depends_on": [
+        "ui-verify"
+      ],
+      "write_scope": [
+        ".lifecycle/changes/http-confidentiality-trust/"
+      ],
+      "status": "done"
+    }
+  ],
+  "approvals": {
+    "contract": true,
+    "critical_actions": false
+  }
+}

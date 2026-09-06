@@ -105,6 +105,15 @@ async fn send_chat_message(
     Ok(node.snapshot().await)
 }
 
+#[tauri::command]
+async fn verify_contact(state: State<'_, Arc<AppState>>) -> Result<PeerSnapshot, String> {
+    let node_slot = state.node.lock().await;
+    let node = node_slot
+        .as_ref()
+        .ok_or_else(|| "listener not started".to_string())?;
+    node.verify_contact().await.map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -116,7 +125,8 @@ pub fn run() {
             set_advertise_host,
             discover_network,
             connect_peer,
-            send_chat_message
+            send_chat_message,
+            verify_contact
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

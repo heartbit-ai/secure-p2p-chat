@@ -1,3 +1,4 @@
+use secure_p2p_chat_lib::crypto::{HandshakeInitiator, Identity};
 use secure_p2p_chat_lib::peer::bind_and_serve;
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -18,6 +19,8 @@ async fn two_peers_handshake_and_exchange_encrypted_message() {
 
     let url_b = format!("http://{local_b}");
     peer_a.connect_to(&url_b).await.expect("connect");
+    peer_a.verify_contact().await.expect("verify a");
+    peer_b.verify_contact().await.expect("verify b");
 
     peer_a
         .send_text("bonjour chiffre")
@@ -30,6 +33,8 @@ async fn two_peers_handshake_and_exchange_encrypted_message() {
     assert_eq!(snap_b.messages.len(), 1);
     assert_eq!(snap_b.messages[0].direction, "in");
     assert_eq!(snap_b.messages[0].body, "bonjour chiffre");
+    assert!(snap_b.safety_number.is_some());
+    assert_eq!(snap_b.trust_state, "verified");
 
     peer_b.send_text("ack").await.expect("send from b");
     // B may queue to outbox if dial-back fails; A polls.
@@ -47,18 +52,17 @@ async fn mailbox_delivers_when_dialback_unreachable() {
     let addr_host = SocketAddr::from(([127, 0, 0, 1], 0));
     let addr_nat = SocketAddr::from(([127, 0, 0, 1], 0));
 
-    // Host publishes a reachable advertise host.
     let (host, local_host, _hh) = bind_and_serve(addr_host, Some("127.0.0.1".into()))
         .await
         .expect("bind host");
-    // NAT peer has no advertise host => empty listen_url on handshake (not dialable).
     let (nat, _local_nat, _hn) = bind_and_serve(addr_nat, None).await.expect("bind nat");
 
     tokio::time::sleep(Duration::from_millis(50)).await;
     let host_url = format!("http://{local_host}");
     nat.connect_to(&host_url).await.expect("nat dials host");
+    nat.verify_contact().await.expect("verify nat");
+    host.verify_contact().await.expect("verify host");
 
-    // Host replies; direct dial-back must fail and land in outbox, then NAT pulls.
     host.send_text("hello from host")
         .await
         .expect("host send");
@@ -98,8 +102,8 @@ async fn spoofed_handshake_without_private_key_is_rejected() {
 
     let client = reqwest::Client::new();
     let url_b = format!("http://{local_b}");
-    let victim = secure_p2p_chat_lib::crypto::Identity::generate();
-    let attacker = secure_p2p_chat_lib::crypto::Identity::generate();
+    let victim = Identity::generate();
+    let mallory = Identity::generate();
     let bob_identity: serde_json::Value = client
         .get(format!("{url_b}/identity"))
         .send()
@@ -109,21 +113,15 @@ async fn spoofed_handshake_without_private_key_is_rejected() {
         .await
         .unwrap();
     let bob_pk = bob_identity["public_key_b64"].as_str().unwrap();
-    let transcript = secure_p2p_chat_lib::crypto::handshake_transcript(
-        &victim.public_key_b64(),
-        bob_pk,
-    );
-    let shared = attacker.shared_secret_with(bob_pk).unwrap();
-    let fake_keys = secure_p2p_chat_lib::crypto::SessionKeys::derive(&shared, true);
-    let fake_proof = fake_keys.encrypt(&transcript).unwrap();
+
+    let (_init, mut offer) =
+        HandshakeInitiator::start(&mallory, bob_pk, "http://127.0.0.1:9").unwrap();
+    // Claim victim's identity while proofs were built with Mallory's secrets.
+    offer.identity_public_key_b64 = victim.public_key_b64();
 
     let resp = client
         .post(format!("{url_b}/handshake"))
-        .json(&serde_json::json!({
-            "public_key_b64": victim.public_key_b64(),
-            "listen_url": "http://127.0.0.1:9",
-            "proof": fake_proof,
-        }))
+        .json(&serde_json::json!({ "offer": offer }))
         .send()
         .await
         .unwrap();
@@ -138,7 +136,7 @@ async fn message_from_unknown_peer_key_is_forbidden() {
     let (peer_a, _local_a, _ha) = bind_and_serve(addr_a, Some("127.0.0.1".into()))
         .await
         .expect("bind a");
-    let (peer_b, local_b, _hb) = bind_and_serve(addr_b, Some("127.0.0.1".into()))
+    let (_peer_b, local_b, _hb) = bind_and_serve(addr_b, Some("127.0.0.1".into()))
         .await
         .expect("bind b");
     tokio::time::sleep(Duration::from_millis(50)).await;
@@ -148,22 +146,51 @@ async fn message_from_unknown_peer_key_is_forbidden() {
         .await
         .expect("connect");
 
-    let stranger = secure_p2p_chat_lib::crypto::Identity::generate();
-    let shared = stranger
-        .shared_secret_with(&peer_b.snapshot().await.public_key_b64)
-        .unwrap();
-    let keys = secure_p2p_chat_lib::crypto::SessionKeys::derive(&shared, true);
-    let payload = keys.encrypt(b"intrusion").unwrap();
-
+    let stranger = Identity::generate();
     let client = reqwest::Client::new();
     let resp = client
         .post(format!("http://{local_b}/message"))
         .json(&serde_json::json!({
             "from_public_key_b64": stranger.public_key_b64(),
-            "payload": payload,
+            "message": {
+                "header": {
+                    "dh_public_b64": stranger.public_key_b64(),
+                    "pn": 0,
+                    "n": 0
+                },
+                "payload": {
+                    "nonce_b64": "AAAAAAAAAAAAAAAA",
+                    "ciphertext_b64": "AAAA"
+                }
+            }
         }))
         .send()
         .await
         .unwrap();
     assert_eq!(resp.status(), reqwest::StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn verify_contact_pins_trust_state() {
+    let addr_a = SocketAddr::from(([127, 0, 0, 1], 0));
+    let addr_b = SocketAddr::from(([127, 0, 0, 1], 0));
+    let (peer_a, _local_a, _ha) = bind_and_serve(addr_a, Some("127.0.0.1".into()))
+        .await
+        .expect("bind a");
+    let (_peer_b, local_b, _hb) = bind_and_serve(addr_b, Some("127.0.0.1".into()))
+        .await
+        .expect("bind b");
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    peer_a
+        .connect_to(&format!("http://{local_b}"))
+        .await
+        .expect("connect");
+    let before = peer_a.snapshot().await;
+    assert_eq!(before.trust_state, "unverified");
+    assert!(before.safety_number.is_some());
+
+    let after = peer_a.verify_contact().await.expect("verify");
+    assert_eq!(after.trust_state, "verified");
+    assert_eq!(after.safety_number, before.safety_number);
 }

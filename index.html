@@ -67,7 +67,24 @@
             <dt>Session</dt>
             <dd id="session-state">inactive</dd>
           </div>
+          <div>
+            <dt>Safety number</dt>
+            <dd id="safety-number" class="mono safety">—</dd>
+          </div>
+          <div>
+            <dt>Confiance</dt>
+            <dd id="trust-state">aucune</dd>
+          </div>
         </dl>
+        <div class="field trust-actions">
+          <button id="verify-btn" type="button" disabled>
+            Vérifier l’interlocuteur
+          </button>
+          <p class="hint">
+            Comparez le safety number hors bande (appel, QR, etc.). Le chiffrement
+            Double Ratchet protège le contenu ; la vérification pinne l’identité du pair.
+          </p>
+        </div>
         <p class="status" id="status" role="status"></p>
       </section>
 
