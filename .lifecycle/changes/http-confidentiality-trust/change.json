@@ -1,6 +1,6 @@
 {
   "id": "http-confidentiality-trust",
-  "state": "verifying",
+  "state": "done",
   "objective": "Rebuild peer messaging greenfield so HTTP transport carries Double-Ratchet confidentiality and interlocutor trust via safety numbers and verification pinning.",
   "non_goals": [
     "No TLS/HTTPS requirement (cleartext HTTP transport remains allowed)",
@@ -38,7 +38,7 @@
     {
       "id": "safety-and-trust",
       "criterion": "Safety numbers are deterministic for a key pair; verify pins the peer; a different identity key is not treated as verified.",
-      "verification": "cd src-tauri && cargo test --lib crypto trust_ -- --nocapture"
+      "verification": "cd src-tauri && cargo test --lib trust_"
     },
     {
       "id": "http-e2e",
@@ -105,5 +105,46 @@
   "approvals": {
     "contract": true,
     "critical_actions": false
+  },
+  "evidence": [
+    {
+      "acceptance_id": "ratchet-confidentiality",
+      "command": "cd src-tauri && cargo test --lib crypto",
+      "exit_code": 0,
+      "revision": "f63210e0ec037cc057cca6165eb9d8e690765531",
+      "observed_at": "2026-09-06T03:39:42Z"
+    },
+    {
+      "acceptance_id": "safety-and-trust",
+      "command": "cd src-tauri && cargo test --lib trust_",
+      "exit_code": 0,
+      "revision": "f63210e0ec037cc057cca6165eb9d8e690765531",
+      "observed_at": "2026-09-06T03:39:42Z"
+    },
+    {
+      "acceptance_id": "http-e2e",
+      "command": "cd src-tauri && cargo test --test p2p_http",
+      "exit_code": 0,
+      "revision": "f63210e0ec037cc057cca6165eb9d8e690765531",
+      "observed_at": "2026-09-06T03:39:42Z"
+    },
+    {
+      "acceptance_id": "backend-builds",
+      "command": "cd src-tauri && cargo check",
+      "exit_code": 0,
+      "revision": "f63210e0ec037cc057cca6165eb9d8e690765531",
+      "observed_at": "2026-09-06T03:39:42Z"
+    }
+  ],
+  "review": {
+    "independent": true,
+    "result": "passed",
+    "revision": "f63210e0ec037cc057cca6165eb9d8e690765531",
+    "findings": [
+      "Pull auth uses timestamped single-use nonces; replay rejected.",
+      "send_text requires Verified trust after safety-number pin.",
+      "trust_state recomputes safety_number against the pinned contact.",
+      "Residual accepted: TOFU until explicit verify; receive allowed while unverified."
+    ]
   }
 }
