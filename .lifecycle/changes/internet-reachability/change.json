@@ -1,0 +1,115 @@
+{
+  "id": "internet-reachability",
+  "state": "implementing",
+  "objective": "Make encrypted HTTP point-to-point chat work between two remote PCs on the internet when at least one peer publishes a reachable URL, including NAT-safe reverse delivery.",
+  "non_goals": [
+    "No full mesh or multi-peer rooms",
+    "No always-on hosted relay service operated by us",
+    "No WebRTC / UDP hole punching stack",
+    "No automatic router admin UI beyond optional future UPnP"
+  ],
+  "project": {
+    "field": "brownfield",
+    "baseline_revision": "fc1e35b92d3845f16450ef1dd25e44a69853992d",
+    "invariants": [
+      "X25519 + HKDF-SHA256 + AES-256-GCM session crypto and mutual handshake proof-of-possession remain required",
+      "Existing endpoints /health, /identity, /handshake, and /message keep working for LAN/direct dial",
+      "Tauri commands start_listener, get_status, connect_peer, and send_chat_message remain available",
+      "Ciphertext is still rejected unless the sender public key matches the session peer"
+    ],
+    "rollback": "Revert this branch; peers fall back to LAN-only advertise-127.0.0.1 behavior from the baseline revision."
+  },
+  "grill": [
+    "User need: two remote internet PCs. Pure mutual inbound HTTP fails under typical double-NAT; safest reversible design is reachable-host + mailbox pull for the NATed peer.",
+    "Assumed at least one peer can publish a reachable HTTP URL (public IP + port forward, VPS, Tailscale, or tunnel).",
+    "Rejected a mandatory central relay for v1 to preserve point-to-point HTTP; mailbox lives on the peer being dialed.",
+    "Pre-mortem: most plausible failure is still advertising 127.0.0.1 or requiring dial-back to a NATed peer \u2014 mitigate with configurable advertise host, STUN hints, empty listen_url meaning not dialable, and encrypted /pull outbox.",
+    "User explicitly requested remote internet PC connectivity; that authorizes optional STUN discovery (external-side-effect) as part of this change."
+  ],
+  "risk": {
+    "tier": "critical",
+    "signals": [
+      "secrets",
+      "auth-permissions",
+      "input-validation",
+      "concurrency-distributed",
+      "external-side-effect"
+    ],
+    "rationale": "Internet-facing HTTP, session auth on pull, encrypted messaging, concurrent poll/send, and optional STUN query to a public server."
+  },
+  "acceptance": [
+    {
+      "id": "lan-continuity",
+      "criterion": "Existing LAN two-peer handshake and encrypted exchange tests remain green.",
+      "verification": "cd src-tauri && cargo test --test p2p_http two_peers_handshake_and_exchange_encrypted_message -- --exact",
+      "continuity": true
+    },
+    {
+      "id": "crypto-continuity",
+      "criterion": "Crypto unit tests including handshake PoP remain green.",
+      "verification": "cd src-tauri && cargo test --lib crypto",
+      "continuity": true
+    },
+    {
+      "id": "mailbox-nat-path",
+      "criterion": "When the initiator advertises an unreachable listen_url, the responder can still deliver a reply via outbox pull.",
+      "verification": "cd src-tauri && cargo test --test p2p_http mailbox_delivers_when_dialback_unreachable -- --exact"
+    },
+    {
+      "id": "advertise-host",
+      "criterion": "A configured advertise host appears in the published listen URL instead of 127.0.0.1.",
+      "verification": "cd src-tauri && cargo test --test p2p_http advertise_host_used_in_listen_url -- --exact"
+    },
+    {
+      "id": "backend-builds",
+      "criterion": "Tauri backend compiles with the new networking commands.",
+      "verification": "cd src-tauri && cargo check"
+    }
+  ],
+  "execution": {
+    "mode": "sequential",
+    "rationale": "Protocol, mailbox, STUN helper, and UI share one integration path on the peer stack."
+  },
+  "tasks": [
+    {
+      "id": "net-and-mailbox",
+      "outcome": "Add advertise host, STUN/local candidates, outbox /pull, and NAT-safe send/poll.",
+      "write_scope": [
+        "src-tauri/src/peer.rs",
+        "src-tauri/src/net.rs",
+        "src-tauri/src/lib.rs",
+        "src-tauri/tests/p2p_http.rs",
+        "src-tauri/Cargo.toml"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "ui-docs",
+      "outcome": "Expose advertise host and shareable URL in the UI; document internet setup.",
+      "depends_on": [
+        "net-and-mailbox"
+      ],
+      "write_scope": [
+        "src/",
+        "index.html",
+        "README.md"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "lifecycle-closeout",
+      "outcome": "Validate GraphPact evidence and independent review for the internet path.",
+      "depends_on": [
+        "ui-docs"
+      ],
+      "write_scope": [
+        ".lifecycle/changes/internet-reachability/"
+      ],
+      "status": "pending"
+    }
+  ],
+  "approvals": {
+    "contract": true,
+    "critical_actions": true
+  }
+}

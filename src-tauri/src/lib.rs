@@ -1,7 +1,8 @@
 pub mod crypto;
+pub mod net;
 pub mod peer;
 
-use peer::{bind_and_serve, PeerNode, PeerSnapshot};
+use peer::{bind_and_serve, NetworkHints, PeerNode, PeerSnapshot};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tauri::State;
@@ -25,13 +26,19 @@ impl Default for AppState {
 async fn start_listener(
     state: State<'_, Arc<AppState>>,
     port: u16,
+    advertise_host: Option<String>,
 ) -> Result<PeerSnapshot, String> {
     let mut node_slot = state.node.lock().await;
     if node_slot.is_some() {
         return Err("listener already started".into());
     }
+    if !(1024..=65535).contains(&port) {
+        return Err("port must be between 1024 and 65535".into());
+    }
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    let (node, _local, handle) = bind_and_serve(addr).await.map_err(|e| e.to_string())?;
+    let (node, _local, handle) = bind_and_serve(addr, advertise_host)
+        .await
+        .map_err(|e| e.to_string())?;
     let snap = node.snapshot().await;
     *node_slot = Some(node);
     *state.server.lock().await = Some(handle);
@@ -45,6 +52,30 @@ async fn get_status(state: State<'_, Arc<AppState>>) -> Result<PeerSnapshot, Str
         .as_ref()
         .ok_or_else(|| "listener not started".to_string())?;
     Ok(node.snapshot().await)
+}
+
+#[tauri::command]
+async fn set_advertise_host(
+    state: State<'_, Arc<AppState>>,
+    advertise_host: Option<String>,
+) -> Result<PeerSnapshot, String> {
+    let node_slot = state.node.lock().await;
+    let node = node_slot
+        .as_ref()
+        .ok_or_else(|| "listener not started".to_string())?;
+    node.set_advertise_host(advertise_host).await;
+    Ok(node.snapshot().await)
+}
+
+#[tauri::command]
+async fn discover_network(
+    port: u16,
+    advertise_host: Option<String>,
+) -> Result<NetworkHints, String> {
+    Ok(PeerNode::network_hints(
+        port,
+        advertise_host.as_deref(),
+    ))
 }
 
 #[tauri::command]
@@ -82,6 +113,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             start_listener,
             get_status,
+            set_advertise_host,
+            discover_network,
             connect_peer,
             send_chat_message
         ])

@@ -134,6 +134,13 @@ label {
   color: var(--mist);
 }
 
+.hint {
+  margin: 0.35rem 0 0;
+  color: var(--mist);
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
 .inline {
   display: grid;
   grid-template-columns: 1fr auto;

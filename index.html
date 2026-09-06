@@ -12,28 +12,52 @@
     <main class="shell">
       <header class="brand-block">
         <p class="brand">Secure P2P Chat</p>
-        <p class="tagline">Conversation chiffrée point à point, directement en HTTP entre deux pairs.</p>
+        <p class="tagline">
+          Chat chiffré point à point en HTTP — LAN ou Internet (un pair joignable suffit).
+        </p>
       </header>
 
       <section class="setup" aria-label="Connexion">
         <div class="field">
           <label for="port">Port local</label>
+          <input id="port" type="number" min="1024" max="65535" value="7420" />
+        </div>
+        <div class="field">
+          <label for="advertise-host">Hôte public à partager (IP / DNS / Tailscale)</label>
           <div class="inline">
-            <input id="port" type="number" min="1024" max="65535" value="7420" />
+            <input
+              id="advertise-host"
+              type="text"
+              placeholder="ex. 203.0.113.10 ou mon-pc.tailnet.ts.net"
+            />
+            <button id="discover-btn" type="button">Détecter</button>
+          </div>
+          <p class="hint">
+            Sur Internet, une machine doit être joignable (port ouvert, Tailscale, ou tunnel).
+            L’autre peut rester derrière NAT : les réponses passent par une boîte aux lettres chiffrée.
+          </p>
+        </div>
+        <div class="field">
+          <div class="inline">
             <button id="start-btn" type="button">Écouter</button>
+            <button id="copy-url-btn" type="button" disabled>Copier mon URL</button>
           </div>
         </div>
         <div class="field">
-          <label for="peer-url">URL du pair</label>
+          <label for="peer-url">URL du pair distant</label>
           <div class="inline">
-            <input id="peer-url" type="url" placeholder="http://192.168.1.12:7421" />
+            <input id="peer-url" type="url" placeholder="http://IP_OU_DNS:7420" />
             <button id="connect-btn" type="button">Connecter</button>
           </div>
         </div>
         <dl class="meta" id="meta">
           <div>
-            <dt>Adresse locale</dt>
-            <dd id="local-url">—</dd>
+            <dt>URL à partager</dt>
+            <dd id="share-url">—</dd>
+          </div>
+          <div>
+            <dt>Candidats</dt>
+            <dd id="candidates" class="mono">—</dd>
           </div>
           <div>
             <dt>Clé publique</dt>
@@ -50,7 +74,14 @@
       <section class="chat" aria-label="Messages">
         <div id="messages" class="messages" aria-live="polite"></div>
         <form id="compose" class="compose">
-          <input id="message-input" type="text" maxlength="8192" placeholder="Écrire un message chiffré…" autocomplete="off" disabled />
+          <input
+            id="message-input"
+            type="text"
+            maxlength="8192"
+            placeholder="Écrire un message chiffré…"
+            autocomplete="off"
+            disabled
+          />
           <button type="submit" id="send-btn" disabled>Envoyer</button>
         </form>
       </section>

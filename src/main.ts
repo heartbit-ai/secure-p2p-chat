@@ -9,19 +9,33 @@ type ChatMessage = {
 
 type PeerSnapshot = {
   listen_addr: string;
+  share_url: string;
   public_key_b64: string;
+  advertise_host: string | null;
+  candidate_urls: string[];
   peer_url: string | null;
   peer_public_key_b64: string | null;
   connected: boolean;
+  peer_dialable: boolean;
   messages: ChatMessage[];
+};
+
+type NetworkHints = {
+  local_urls: string[];
+  stun_public_ip: string | null;
+  suggested_share_url: string | null;
 };
 
 const els = {
   port: document.querySelector<HTMLInputElement>("#port")!,
+  advertiseHost: document.querySelector<HTMLInputElement>("#advertise-host")!,
+  discoverBtn: document.querySelector<HTMLButtonElement>("#discover-btn")!,
   startBtn: document.querySelector<HTMLButtonElement>("#start-btn")!,
+  copyUrlBtn: document.querySelector<HTMLButtonElement>("#copy-url-btn")!,
   peerUrl: document.querySelector<HTMLInputElement>("#peer-url")!,
   connectBtn: document.querySelector<HTMLButtonElement>("#connect-btn")!,
-  localUrl: document.querySelector<HTMLElement>("#local-url")!,
+  shareUrl: document.querySelector<HTMLElement>("#share-url")!,
+  candidates: document.querySelector<HTMLElement>("#candidates")!,
   localKey: document.querySelector<HTMLElement>("#local-key")!,
   sessionState: document.querySelector<HTMLElement>("#session-state")!,
   status: document.querySelector<HTMLElement>("#status")!,
@@ -33,6 +47,7 @@ const els = {
 
 let knownMessageIds = new Set<string>();
 let pollTimer: number | undefined;
+let lastShareUrl = "";
 
 function setStatus(text: string, isError = false) {
   els.status.textContent = text;
@@ -40,14 +55,21 @@ function setStatus(text: string, isError = false) {
 }
 
 function renderSnapshot(snap: PeerSnapshot) {
-  els.localUrl.textContent = snap.listen_addr;
+  lastShareUrl = snap.share_url;
+  els.shareUrl.textContent = snap.share_url;
+  els.candidates.textContent = snap.candidate_urls.join(" · ") || "—";
   els.localKey.textContent = snap.public_key_b64;
-  els.sessionState.textContent = snap.connected ? "chiffrée · active" : "inactive";
+  els.sessionState.textContent = snap.connected
+    ? snap.peer_dialable
+      ? "chiffrée · active (direct)"
+      : "chiffrée · active (mailbox NAT)"
+    : "inactive";
   els.messageInput.disabled = !snap.connected;
   els.sendBtn.disabled = !snap.connected;
+  els.copyUrlBtn.disabled = !snap.share_url;
 
   if (snap.messages.length === 0) {
-    els.messages.innerHTML = `<p class="empty">Aucun message pour l’instant. Démarrez l’écoute, connectez un pair, puis écrivez.</p>`;
+    els.messages.innerHTML = `<p class="empty">Aucun message. Partagez votre URL, connectez un pair, puis écrivez.</p>`;
     knownMessageIds = new Set();
     return;
   }
@@ -89,6 +111,31 @@ function startPolling() {
   }, 1000);
 }
 
+els.discoverBtn.addEventListener("click", async () => {
+  const port = Number(els.port.value);
+  try {
+    const hints = await invoke<NetworkHints>("discover_network", {
+      port,
+      advertiseHost: els.advertiseHost.value.trim() || null,
+    });
+    if (!els.advertiseHost.value.trim() && hints.stun_public_ip) {
+      els.advertiseHost.value = hints.stun_public_ip;
+    }
+    const summary = [
+      hints.suggested_share_url
+        ? `Suggestion: ${hints.suggested_share_url}`
+        : null,
+      hints.stun_public_ip ? `STUN: ${hints.stun_public_ip}` : "STUN indisponible",
+      hints.local_urls.length ? `LAN: ${hints.local_urls.join(", ")}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    setStatus(summary || "Aucune adresse détectée.");
+  } catch (err) {
+    setStatus(String(err), true);
+  }
+});
+
 els.startBtn.addEventListener("click", async () => {
   const port = Number(els.port.value);
   if (!Number.isInteger(port) || port < 1024 || port > 65535) {
@@ -97,9 +144,16 @@ els.startBtn.addEventListener("click", async () => {
   }
   try {
     els.startBtn.disabled = true;
-    const snap = await invoke<PeerSnapshot>("start_listener", { port });
+    const snap = await invoke<PeerSnapshot>("start_listener", {
+      port,
+      advertiseHost: els.advertiseHost.value.trim() || null,
+    });
     renderSnapshot(snap);
-    setStatus(`Écoute sur ${snap.listen_addr}`);
+    setStatus(
+      snap.advertise_host
+        ? `Écoute publiée sur ${snap.share_url}`
+        : `Écoute locale. Pour Internet, renseignez un hôte public puis redémarrez, ou connectez-vous vers un pair déjà joignable.`,
+    );
     startPolling();
   } catch (err) {
     els.startBtn.disabled = false;
@@ -107,10 +161,20 @@ els.startBtn.addEventListener("click", async () => {
   }
 });
 
+els.copyUrlBtn.addEventListener("click", async () => {
+  if (!lastShareUrl) return;
+  try {
+    await navigator.clipboard.writeText(lastShareUrl);
+    setStatus("URL copiée.");
+  } catch {
+    setStatus(`Copiez manuellement: ${lastShareUrl}`);
+  }
+});
+
 els.connectBtn.addEventListener("click", async () => {
   const peerUrl = els.peerUrl.value.trim();
   if (!peerUrl) {
-    setStatus("Indiquez l’URL HTTP du pair.", true);
+    setStatus("Indiquez l’URL HTTP du pair distant.", true);
     return;
   }
   try {
@@ -137,5 +201,7 @@ els.compose.addEventListener("submit", async (event) => {
 });
 
 window.addEventListener("DOMContentLoaded", () => {
-  setStatus("Démarrez l’écoute pour publier votre endpoint HTTP.");
+  setStatus(
+    "Astuce Internet: un PC ouvre le port / utilise Tailscale et partage son URL; l’autre se connecte.",
+  );
 });
